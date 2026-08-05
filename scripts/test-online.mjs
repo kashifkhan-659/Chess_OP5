@@ -4,7 +4,7 @@
 //   node scripts/test-online.mjs
 import factory from '../public/wasm/chess_engine.js';
 import { createEngine } from '../src/js/engine.js';
-import { normalizeCode, shape, takeSeat } from '../src/js/online.js';
+import { afterMove, normalizeCode, remaining, shape, takeSeat, timeControl } from '../src/js/online.js';
 
 let pass = 0;
 const failures = [];
@@ -48,6 +48,36 @@ check('third player told why', Boolean(takeSeat(full, 'nosy').refusal), true);
 // A transaction handler returning undefined is how the SDK is told to abort.
 check('refusal aborts the write', takeSeat(full, 'nosy').room, undefined);
 check('missing room refused', takeSeat(null, 'guest').room, undefined);
+
+// --- clocks -----------------------------------------------------------------
+// Only the side to move is spending, and both devices work it out from the
+// instant of the last move, so the same snapshot has to read the same on each.
+const t0 = 1_000_000;
+const clock = { w: 60_000, b: 60_000, at: t0, turn: 'w' };
+
+check('idle clock unchanged', remaining(clock, 'b', t0 + 9_000), 60_000);
+check('mover is spending', remaining(clock, 'w', t0 + 9_000), 51_000);
+check('never below zero', remaining(clock, 'w', t0 + 90_000), 0);
+// A device whose own clock reads behind the server's must not gain time.
+check('backwards clock is free', remaining(clock, 'w', t0 - 5_000), 60_000);
+
+const inc2 = afterMove(clock, 2, t0 + 9_000);
+check('increment paid on completion', inc2.w, 53_000);
+check('opponent untouched', inc2.b, 60_000);
+check('turn handed over', inc2.turn, 'b');
+check('opponent now spending', remaining(inc2, 'b', t0 + 12_000), 57_000);
+check('mover now idle', remaining(inc2, 'w', t0 + 12_000), 53_000);
+
+const noInc = afterMove(clock, 0, t0 + 9_000);
+check('no increment adds nothing', noInc.w, 51_000);
+// Sitting on the flag is a loss the instant it reads zero, whatever else is on
+// the board — both devices derive it from this one number.
+check('flag falls at zero', remaining(afterMove(clock, 0, t0 + 60_000), 'w', t0 + 60_000), 0);
+
+check('preset lookup', timeControl('3+2').base, 180);
+check('preset increment', timeControl('10+5').inc, 5);
+check('unknown preset is untimed', timeControl('nonsense').id, 'none');
+check('untimed preset has no base', timeControl('none').base, undefined);
 
 // --- replay: the actual guarantee both devices depend on --------------------
 const live = await createEngine(factory);

@@ -10,6 +10,10 @@
 //     createdAt: <epoch ms>
 //     players:  { w: <playerId>, b: <playerId> }
 //     moves:    { 0: {f,t,p?}, 1: {f,t,p?}, ... }
+//     tc:       { id, base, inc }        — absent on an untimed room
+//     clock:    { w: <ms>, b: <ms>, at: <epoch ms>, turn }
+//     conn:     { w: true | <dropped at>, b: … }
+//     over:     { winner, reason, at }   — only for endings the moves don't show
 import { firebaseConfig } from './firebase-config.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/12.17.1/';
@@ -33,8 +37,17 @@ async function sdk() {
     import(`${SDK}firebase-database.js`),
   ]);
   fb = { ...database, db: database.getDatabase(app.initializeApp(firebaseConfig)) };
+  // Two clocks only agree if both devices measure against the same clock, and
+  // neither of them is the one on the wall behind the player.
+  database.onValue(database.ref(fb.db, '.info/serverTimeOffset'), (s) => {
+    skew = s.val() || 0;
+  });
   return fb;
 }
+
+let skew = 0;
+/** Our best estimate of the server's clock. Every stored instant uses it. */
+export const serverNow = () => Date.now() + skew;
 
 // ------------------------------------------------------------------ storage
 
@@ -69,6 +82,56 @@ function playerId() {
 export const loadSession = () => load(SESSION_KEY);
 export const clearSession = () => store(SESSION_KEY, null);
 
+// ------------------------------------------------------------------- clocks
+
+/** The presets the creator picks from, in the order the menu lists them. */
+export const TIME_CONTROLS = [
+  { id: 'none', group: 'Untimed', label: 'No clock' },
+  { id: '1+0', group: 'Bullet', label: '1 min', base: 60, inc: 0 },
+  { id: '1+1', group: 'Bullet', label: '1 min + 1 sec', base: 60, inc: 1 },
+  { id: '3+0', group: 'Blitz', label: '3 min', base: 180, inc: 0 },
+  { id: '3+2', group: 'Blitz', label: '3 min + 2 sec', base: 180, inc: 2 },
+  { id: '5+0', group: 'Blitz', label: '5 min', base: 300, inc: 0 },
+  { id: '10+0', group: 'Rapid', label: '10 min', base: 600, inc: 0 },
+  { id: '10+5', group: 'Rapid', label: '10 min + 5 sec', base: 600, inc: 5 },
+  { id: '15+10', group: 'Rapid', label: '15 min + 10 sec', base: 900, inc: 10 },
+  { id: '30+0', group: 'Classical', label: '30 min', base: 1800, inc: 0 },
+];
+
+export const timeControl = (id) => TIME_CONTROLS.find((t) => t.id === id) || TIME_CONTROLS[0];
+
+/**
+ * Milliseconds left for `color` at `now`. Only the side to move is spending,
+ * so every device can derive both clocks from the instant of the last move
+ * rather than from its own countdown, which is what stops the two disagreeing.
+ */
+export function remaining(clock, color, now) {
+  if (!clock) return 0;
+  const left = clock[color];
+  if (color !== clock.turn) return left;
+  return Math.max(0, left - Math.max(0, now - clock.at));
+}
+
+/** The clock the side to move leaves behind by completing a move at `now`. */
+export function afterMove(clock, inc, now) {
+  const mover = clock.turn;
+  return {
+    w: clock.w,
+    b: clock.b,
+    [mover]: remaining(clock, mover, now) + inc * 1000,
+    at: now,
+    turn: mover === 'w' ? 'b' : 'w',
+  };
+}
+
+/** Starts the clock once both seats are filled. Whoever gets there first wins. */
+export async function startClock(code, tc) {
+  const { db, ref, runTransaction } = await sdk();
+  await runTransaction(ref(db, `rooms/${code}/clock`), (clock) =>
+    clock ? undefined : { w: tc.base * 1000, b: tc.base * 1000, at: serverNow(), turn: 'w' }
+  );
+}
+
 // -------------------------------------------------------------------- rooms
 
 function randomCode() {
@@ -81,16 +144,17 @@ export function normalizeCode(input) {
 }
 
 /** Creates a room and seats the caller as White. Returns { code, color }. */
-export async function createRoom() {
+export async function createRoom(tcId) {
   const { db, ref, runTransaction } = await sdk();
   const id = playerId();
+  const tc = timeControl(tcId);
+  const fresh = { createdAt: Date.now(), players: { w: id } };
+  if (tc.base) fresh.tc = { id: tc.id, base: tc.base, inc: tc.inc };
   // A collision needs two of 32^6 codes to land together; retry rather than
   // ever hand a player a room somebody else is already sitting in.
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = randomCode();
-    const res = await runTransaction(ref(db, `rooms/${code}`), (room) =>
-      room ? undefined : { createdAt: Date.now(), players: { w: id } }
-    );
+    const res = await runTransaction(ref(db, `rooms/${code}`), (room) => (room ? undefined : fresh));
     if (res.committed) {
       if (DEV) console.log(`[online] created rooms/${code}`);
       return store(SESSION_KEY, { code, color: 'w' });
@@ -171,17 +235,60 @@ export function shape(room) {
   const raw = room.moves || {};
   const moves = [];
   for (let i = 0; raw[i]; i++) moves.push(raw[i]);
-  return { players: room.players || {}, moves };
+  // tc/clock/conn/over are passed through untouched — absent stays absent.
+  return { players: room.players || {}, moves, tc: room.tc, clock: room.clock, conn: room.conn, over: room.over };
 }
 
-/** Writes the move that occupies ply `index` (0-based, White's first = 0). */
-export async function pushMove(code, index, { from, to, promo }) {
-  const { db, ref, set } = await sdk();
-  await set(ref(db, `rooms/${code}/moves/${index}`), promo ? { f: from, t: to, p: promo } : { f: from, t: to });
+/**
+ * Writes the move that occupies ply `index` (0-based, White's first = 0),
+ * together with the clock it leaves behind — one write, so a device can never
+ * see the move without the time it was played in.
+ */
+export async function pushMove(code, index, { from, to, promo }, clock = null) {
+  const { db, ref, update } = await sdk();
+  const patch = { [`moves/${index}`]: promo ? { f: from, t: to, p: promo } : { f: from, t: to } };
+  if (clock) patch.clock = clock;
+  await update(ref(db, `rooms/${code}`), patch);
+}
+
+/**
+ * Records an ending the move list can't show — a flag fall, a walk-out. Both
+ * devices may spot the same one, so the first write is the one that counts.
+ */
+export async function endGame(code, winner, reason) {
+  const { db, ref, runTransaction } = await sdk();
+  await runTransaction(ref(db, `rooms/${code}/over`), (over) =>
+    over ? undefined : { winner, reason, at: serverNow() }
+  );
+}
+
+/**
+ * Marks this seat present, and arms the server to stamp the moment we drop —
+ * a closed tab never gets to write anything itself. Every reconnection has to
+ * re-arm and re-announce: the stamp the server already spent is gone, and a
+ * connection that healed on its own would otherwise still read as a walk-out.
+ * Returns the unsubscribe.
+ */
+export async function markOnline(code, color) {
+  const { db, ref, set, onValue, onDisconnect, serverTimestamp } = await sdk();
+  const seat = ref(db, `rooms/${code}/conn/${color}`);
+  return onValue(ref(db, '.info/connected'), async (snap) => {
+    if (!snap.val()) return;
+    await onDisconnect(seat).set(serverTimestamp());
+    set(seat, true);
+  });
+}
+
+/** Leaving on purpose: disarm the stamp, so nobody waits out a grace period. */
+export async function markOffline(code, color) {
+  const { db, ref, set, onDisconnect } = await sdk();
+  const seat = ref(db, `rooms/${code}/conn/${color}`);
+  await onDisconnect(seat).cancel();
+  await set(seat, null);
 }
 
 /** Rematch: clearing the move list resets both boards through the listener. */
 export async function resetGame(code) {
-  const { db, ref, set } = await sdk();
-  await set(ref(db, `rooms/${code}/moves`), null);
+  const { db, ref, update } = await sdk();
+  await update(ref(db, `rooms/${code}`), { moves: null, clock: null, over: null });
 }

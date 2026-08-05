@@ -85,17 +85,21 @@ Two people on different devices, one shared room code. The site stays static —
 Firebase Realtime Database is the only server involved, and the browser talks
 to it directly.
 
-**How it works.** One player picks **Online → Create game** and gets a code
-like `K7QP2M`; the other picks **Online**, types the code and hits **Join**.
-The creator is White, the joiner is Black.
+**How it works.** One player picks **Online**, chooses a time control and hits
+**Create game** for a code like `K7QP2M`; the other picks **Online**, types the
+code and hits **Join**. The creator is White, the joiner is Black.
 
-A room stores nothing but the move list:
+A room stores the move list, plus the little that can't be derived from it:
 
 ```
 /rooms/K7QP2M
   createdAt: 1754400000000
   players:   { w: "<player id>", b: "<player id>" }
   moves:     { 0: {f:12, t:28}, 1: {f:52, t:36}, 2: {f:5, t:26, p:"q"}, ... }
+  tc:        { id: "5+0", base: 300, inc: 0 }      — absent on an untimed room
+  clock:     { w: 291400, b: 300000, at: <ms>, turn: "b" }
+  conn:      { w: true, b: 1754400090000 }         — a number is when they dropped
+  over:      { winner: "w", reason: "time", at: <ms> }
 ```
 
 Whose turn it is, the position, check, checkmate and every draw condition are
@@ -103,6 +107,22 @@ all recomputed by the same WASM engine on both devices, so none of it can drift
 between them. Each client keeps a live listener on the room; an opponent's move
 lands as a new entry and is replayed locally the moment it arrives. The board
 is locked whenever it isn't your turn, and until the second player has joined.
+
+**Clocks.** Presets run from 1+0 bullet to 30-minute classical, with **No
+clock** for an untimed game. A move and the clock it leaves behind are written
+together, so neither device can see one without the other, and both derive the
+running time from the timestamp of that last move rather than from a countdown
+of their own — a laggy connection costs the player who has it, not the one who
+doesn't, and the two screens can't disagree about who ran out first. Increments
+are paid on completing a move. A flag that falls is a loss on the spot,
+whatever is on the board.
+
+**Leaving.** The server is told to stamp the moment a player's connection drops
+before that player ever needs it, so a closed tab or a dead network still
+registers. The one left behind sees a 60-second countdown and wins if it runs
+out; the clock keeps running against the absent player throughout, so
+disconnecting is not a way to stall. Rejoining inside the window picks the game
+straight back up. Pressing **Leave room** is deliberate, so it forfeits at once.
 
 The room code and your colour are kept in `localStorage`, so a refresh or a
 dropped connection rejoins the same room and replays the move list to catch up.

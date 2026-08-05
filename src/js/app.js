@@ -24,6 +24,7 @@ const prefs = {
   mode: 'ai',
   level: 2,
   side: 'w',
+  tc: '10+0', // time control for rooms this device creates
   ...readPrefs(),
 };
 
@@ -51,8 +52,9 @@ let flipped = prefs.side === 'b';
 let thinking = false;
 let generation = 0; // bumped whenever the game changes under a pending search
 let promoResolve = null;
-let online = null; // { code, color, ready } while seated in an online room
+let online = null; // { code, color, ready, tc, clock, conn, over } while seated in a room
 let unwatch = null;
+let unpresence = null;
 
 // ---------------------------------------------------------------- AI worker
 
@@ -89,10 +91,16 @@ function requestAi(fen, level) {
 const board = new Board($('#board'), { onMove: attemptMove, onPickup: pickup });
 
 function humanToMove() {
-  // Online: the board stays locked until both seats are filled, and then only
-  // unlocks on your own colour's turn. The engine still has the final say on
-  // legality — this only stops you touching pieces that aren't yours.
-  if (prefs.mode === 'online') return Boolean(online?.ready) && state.turn === online.color;
+  // Online: the board stays locked until both seats are filled — and, in a timed
+  // room, until the clock exists, so no move can be played into a clock that
+  // hasn't started. Then it only unlocks on your own colour's turn. The engine
+  // still has the final say on legality — this only stops you touching pieces
+  // that aren't yours.
+  if (prefs.mode === 'online') {
+    if (!online?.ready || online.over) return false;
+    if (online.tc && !online.clock) return false;
+    return state.turn === online.color;
+  }
   return prefs.mode === 'pvp' || state.turn === prefs.side;
 }
 
@@ -144,8 +152,14 @@ async function attemptMove(from, to) {
   sync({ hint: { from, to, promo } });
   announce();
   if (online) {
+    let clock = null;
+    if (online.tc && online.clock) {
+      clock = net.afterMove(online.clock, online.tc.inc, net.serverNow());
+      online.clock = clock; // our own clock stops now, not when the echo lands
+      renderClocks();
+    }
     net
-      .pushMove(online.code, ply, { from, to, promo })
+      .pushMove(online.code, ply, { from, to, promo }, clock)
       .catch(() => setNote('Could not send that move — check your connection.'));
   }
   scheduleAi();
@@ -248,9 +262,10 @@ function undoMove() {
 // ------------------------------------------------------------------- panels
 
 function renderPanel() {
-  $('#status-text').textContent = statusText(state);
-  $('#status').classList.toggle('check', state.check && state.status === 'playing');
-  $('#status').classList.toggle('over', state.status !== 'playing');
+  const room = roomOverText(); // a flag fall or a walk-out outranks the position
+  $('#status-text').textContent = room || statusText(state);
+  $('#status').classList.toggle('check', !room && state.check && state.status === 'playing');
+  $('#status').classList.toggle('over', Boolean(room) || state.status !== 'playing');
   $('#turn-dot').dataset.turn = state.turn;
 
   renderMoves(state.history);
@@ -350,12 +365,18 @@ function setOrientation(next) {
 }
 
 function showOverlayIfOver() {
-  if (state.status === 'playing') return hideOverlay();
+  const room = online?.over;
+  if (state.status === 'playing' && !room) return hideOverlay();
   const overlay = $('#overlay');
   const mate = state.status === 'checkmate';
-  $('#result-icon').textContent = mate ? (state.winner === 'w' ? '♔' : '♚') : '½';
-  $('#result-title').textContent = mate ? 'Checkmate' : 'Draw';
-  $('#result-sub').textContent = statusText(state).replace(/^(Checkmate|Draw) — /, '');
+  const drawn = !room && !mate;
+  $('#result-icon').textContent = drawn ? '½' : (room ? room.winner : state.winner) === 'w' ? '♔' : '♚';
+  $('#result-title').textContent = room
+    ? { time: 'Flag fell', disconnect: 'Opponent left', resign: 'Resigned' }[room.reason] || 'Game over'
+    : mate
+      ? 'Checkmate'
+      : 'Draw';
+  $('#result-sub').textContent = roomOverText() || statusText(state).replace(/^(Checkmate|Draw) — /, '');
   overlay.hidden = false;
   requestAnimationFrame(() => overlay.classList.add('show'));
 }
@@ -364,6 +385,102 @@ function hideOverlay() {
   const overlay = $('#overlay');
   overlay.classList.remove('show');
   overlay.hidden = true;
+}
+
+// -------------------------------------------------- clocks and presence
+
+const DISCONNECT_GRACE = 60_000;
+const OVER_REASON = { time: 'on time', disconnect: 'by disconnection', resign: 'by resignation' };
+
+let ticker = null;
+let claimed = false; // one ending claimed per game, not one per tick
+
+/** True while the room holds a game either player could still move in. */
+function gameLive() {
+  return Boolean(online?.ready) && !online.over && state.status === 'playing';
+}
+
+/** How an online game ended, when the move list alone doesn't say. */
+function roomOverText() {
+  const o = online?.over;
+  if (!o) return null;
+  return `${o.winner === 'w' ? 'White' : 'Black'} wins ${OVER_REASON[o.reason] || ''}`.trim();
+}
+
+function tick() {
+  if (!online) return stopTicking();
+  renderClocks();
+  renderPresence();
+}
+function startTicking() {
+  ticker ??= setInterval(tick, 200);
+}
+function stopTicking() {
+  clearInterval(ticker);
+  ticker = null;
+}
+
+function fmtClock(ms) {
+  const s = Math.max(0, ms) / 1000;
+  if (s < 10) return s.toFixed(1); // down here the tenths are the whole story
+  return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+}
+
+/** Warn at a tenth of the starting time, never below 10s or above a minute. */
+const lowAt = (tc) => Math.min(60_000, Math.max(10_000, tc.base * 100));
+
+/**
+ * Both clocks are derived from the instant of the last move rather than from a
+ * countdown this device has been running on its own, so neither player can end
+ * up looking at a different time than the other.
+ */
+function renderClocks() {
+  const live = Boolean(online?.tc && online.clock);
+  // A finished game freezes its clocks — at the moment it was called if the
+  // room says so, otherwise at the move that ended it.
+  const now = gameLive()
+    ? net.serverNow()
+    : (online?.over?.at ?? online?.clock?.at ?? net.serverNow());
+  for (const color of ['w', 'b']) {
+    const el = $(color === 'w' ? '#clock-white' : '#clock-black');
+    el.hidden = !live;
+    if (!live) continue;
+    const ms = net.remaining(online.clock, color, now);
+    el.textContent = fmtClock(ms);
+    el.classList.toggle('active', online.clock.turn === color && gameLive());
+    el.classList.toggle('low', ms < lowAt(online.tc));
+  }
+  if (!live || !gameLive() || claimed) return;
+  if (net.remaining(online.clock, online.clock.turn, now) > 0) return;
+  claim(online.clock.turn === 'w' ? 'b' : 'w', 'time');
+}
+
+/**
+ * The server stamps the moment a player's connection drops, so the countdown
+ * is the same one on both devices and survives a refresh of this one.
+ */
+function renderPresence() {
+  const el = $('#online-conn');
+  const opp = online.color === 'w' ? 'b' : 'w';
+  const droppedAt = online.conn?.[opp];
+  // Only a timestamp means "the server watched them go". true, or nothing at
+  // all from a player who never arrived, is not a disconnect.
+  if (typeof droppedAt !== 'number' || !gameLive()) {
+    el.hidden = true;
+    return;
+  }
+  const left = Math.ceil((DISCONNECT_GRACE - (net.serverNow() - droppedAt)) / 1000);
+  el.textContent = left > 0 ? `Opponent disconnected — ${left}s to reconnect…` : 'Opponent disconnected.';
+  el.hidden = false;
+  if (left <= 0 && !claimed) claim(online.color, 'disconnect');
+}
+
+/** Reports an ending to the room. Retried on the next tick if the write fails. */
+function claim(winner, reason) {
+  claimed = true;
+  net.endGame(online.code, winner, reason).catch(() => {
+    claimed = false;
+  });
 }
 
 // ---------------------------------------------------------- online rooms
@@ -381,6 +498,21 @@ function applyRoom(room, error) {
     return;
   }
   online.ready = Boolean(room.players.w && room.players.b);
+  online.tc = room.tc || null;
+  online.clock = room.clock || null;
+  online.conn = room.conn || {};
+
+  const wasOver = Boolean(online.over);
+  online.over = room.over || null;
+  if (wasOver && !online.over) claimed = false; // rematch: the ending is claimable again
+  if (!wasOver && online.over) {
+    const won = online.over.winner === online.color;
+    setTimeout(() => (won ? sound.win() : sound.lose()), 300);
+  }
+  // Whoever gets there first starts the clock; the transaction settles the tie.
+  if (online.tc && online.ready && !online.clock && !online.over) {
+    net.startClock(online.code, online.tc).catch(() => {});
+  }
 
   let local = state.history.length;
   if (room.moves.length < local) {
@@ -410,7 +542,8 @@ function applyRoom(room, error) {
 }
 
 async function enterRoom({ code, color }) {
-  online = { code, color, ready: false };
+  online = { code, color, ready: false, tc: null, clock: null, conn: {}, over: null };
+  claimed = false;
   generation++;
   engine.newGame();
   hideOverlay();
@@ -424,10 +557,24 @@ async function enterRoom({ code, color }) {
     leaveRoom(); // a room with no listener would just look frozen
     throw err;
   }
+  unpresence = await net.markOnline(code, color).catch(() => null);
+  startTicking();
   setNote(''); // we're in — clear whatever got us here
 }
 
-function leaveRoom() {
+/**
+ * `resign` is for the ways a player leaves on purpose — the button, switching
+ * mode — which forfeit on the spot. A room that vanished under us doesn't.
+ */
+function leaveRoom({ resign = false } = {}) {
+  if (online) {
+    const { code, color } = online;
+    if (resign && gameLive()) net.endGame(code, color === 'w' ? 'b' : 'w', 'resign').catch(() => {});
+    unpresence?.(); // stop announcing the seat before giving it up
+    net.markOffline(code, color).catch(() => {});
+  }
+  unpresence = null;
+  stopTicking();
   unwatch?.();
   unwatch = null;
   online = null;
@@ -452,12 +599,14 @@ function renderOnline() {
   $('#online-room').hidden = !online;
   if (online) {
     const colour = online.color === 'w' ? 'White' : 'Black';
+    const clock = online.tc ? net.timeControl(online.tc.id).label : 'No clock';
     $('#room-code-text').textContent = online.code;
     $('#online-you').textContent = online.ready
-      ? `You are ${colour}`
-      : `You are ${colour} — waiting for an opponent…`;
+      ? `You are ${colour} · ${clock}`
+      : `You are ${colour} · ${clock} — waiting for an opponent…`;
     $('#online-room').classList.toggle('waiting', !online.ready);
   }
+  renderClocks(); // hides them again on the way out of a room
   // The strips are fixed to a colour, so naming yourself on one is enough.
   const mine = prefs.mode === 'online' ? online?.color : null;
   $('#strip-bottom .pname').textContent = mine === 'w' ? 'White — you' : 'White';
@@ -477,16 +626,37 @@ async function roomAction(btn, fn) {
   }
 }
 
-$('#btn-create').addEventListener('click', (ev) => roomAction(ev.currentTarget, net.createRoom));
+function buildTimeControls() {
+  const select = $('#tc');
+  const groups = new Map();
+  for (const tc of net.TIME_CONTROLS) {
+    if (!groups.has(tc.group)) {
+      const group = document.createElement('optgroup');
+      group.label = tc.group;
+      groups.set(tc.group, group);
+      select.appendChild(group);
+    }
+    groups.get(tc.group).appendChild(new Option(tc.label, tc.id, false, tc.id === prefs.tc));
+  }
+}
+$('#tc').addEventListener('change', (ev) => {
+  prefs.tc = ev.target.value;
+  savePrefs();
+});
+
+$('#btn-create').addEventListener('click', (ev) =>
+  roomAction(ev.currentTarget, () => net.createRoom(prefs.tc))
+);
 $('#btn-join').addEventListener('click', (ev) =>
   roomAction(ev.currentTarget, () => net.joinRoom($('#join-code').value))
 );
 $('#join-code').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') $('#btn-join').click();
 });
+// Walking out mid-game is a decision, not an accident: no grace period.
 $('#btn-leave').addEventListener('click', () => {
   setNote('');
-  leaveRoom();
+  leaveRoom({ resign: true });
 });
 
 $('#room-code').addEventListener('click', async () => {
@@ -555,7 +725,7 @@ function applyMode() {
 $('#mode').addEventListener('click', (ev) => {
   const btn = ev.target.closest('[data-mode]');
   if (!btn || btn.dataset.mode === prefs.mode) return;
-  if (online) leaveRoom(); // switching away gives up the seat
+  if (online) leaveRoom({ resign: true }); // switching away gives up the seat
   setNote('');
   prefs.mode = btn.dataset.mode;
   savePrefs();
@@ -659,6 +829,7 @@ if (!net.onlineAvailable) {
 }
 
 buildLevels();
+buildTimeControls();
 applyMode();
 applyTheme();
 applySound();

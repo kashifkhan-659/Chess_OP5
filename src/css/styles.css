@@ -356,6 +356,39 @@ button {
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
+/* The clock sits at the far end of its own player's strip, so it reads as
+   belonging to that side of the board rather than to the panel. */
+.player-strip .clock {
+  flex: none;
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.player-strip .clock.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.player-strip .clock.low {
+  color: #e0524b;
+  border-color: rgb(224 82 75 / 0.5);
+}
+.player-strip .clock.active.low {
+  background: rgb(224 82 75 / 0.12);
+  animation: clock-low 1s ease-in-out infinite;
+}
+@keyframes clock-low {
+  50% { opacity: 0.45; }
+}
+
 .thinking-tag {
   font-size: 0.72rem;
   color: var(--muted);
@@ -1035,8 +1068,26 @@ body.thinking .board-frame::before {
   color: var(--muted);
 }
 
+.tc-select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+.tc-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .online-you,
-.online-note {
+.online-note,
+.online-conn {
   margin: 0;
   font-size: 0.78rem;
   color: var(--muted);
@@ -1044,6 +1095,12 @@ body.thinking .board-frame::before {
 }
 .online-note.error {
   color: #e0524b;
+}
+/* An opponent who vanished is the one thing here worth interrupting for. */
+.online-conn {
+  color: #e0524b;
+  font-weight: 600;
+  animation: waiting 1.5s ease-in-out infinite;
 }
 /* Waiting on the second player: the same pulse the thinking tag uses. */
 .online-room.waiting .online-you {
