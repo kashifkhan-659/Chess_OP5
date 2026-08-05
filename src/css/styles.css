@@ -99,6 +99,8 @@ body {
   -ms-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+  /* Inherited: kills Chrome's grey/blue tap-flash overlay across the whole UI. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* user-drag doesn't inherit: the piece SVGs need it themselves, or a

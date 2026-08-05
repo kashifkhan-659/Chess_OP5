@@ -33,12 +33,14 @@ export class Board {
     this.#buildSquares();
     this.#buildCoords();
     root.addEventListener('pointerdown', (ev) => this.#pointerDown(ev));
+    // Android's long-press callout arrives as contextmenu/selectstart. Suppress
+    // both unconditionally — an empty square, a locked board or a completed move
+    // all leave nothing selected, and a conditional guard misses every one.
     root.addEventListener('contextmenu', (ev) => {
-      if (this.selected >= 0) {
-        ev.preventDefault();
-        this.clearSelection();
-      }
+      ev.preventDefault();
+      this.clearSelection();
     });
+    root.addEventListener('selectstart', (ev) => ev.preventDefault());
   }
 
   // Rotating the board 180 degrees leaves the light/dark pattern unchanged,
