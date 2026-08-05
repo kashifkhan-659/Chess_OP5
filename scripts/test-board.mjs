@@ -124,6 +124,18 @@ function setup() {
   check('tapping an empty square plays nothing', moves, []);
 }
 
+// --- the tap does not get replayed as a mouse click -------------------------
+// Android's compat mouse replay hit-tests the touch point after the fact, so it
+// lands on whatever the tap put there — the promotion dialog, which reads it as
+// an outside-tap and closes. Cancelling touchend is what stops the replay.
+{
+  const { root } = setup();
+  let cancelled = false;
+  root.fire('pointerdown', touch(0));
+  root.fire('touchend', { preventDefault: () => (cancelled = true) });
+  check('touchend is cancelled, suppressing the compat click', cancelled, true);
+}
+
 // ---------------------------------------------------------------------------
 console.log(`\n${pass} passed, ${failures.length} failed`);
 if (failures.length) {

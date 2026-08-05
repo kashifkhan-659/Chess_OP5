@@ -39,6 +39,12 @@ export class Board {
     // cancels the move the user is still in the middle of making.
     root.addEventListener('contextmenu', (ev) => ev.preventDefault());
     root.addEventListener('selectstart', (ev) => ev.preventDefault());
+    // The pointer handlers below fully consume a tap, so the compatibility mouse
+    // replay Android sends afterwards is pure noise — and it hit-tests the touch
+    // point at replay time, so anything that opened *during* the tap (the
+    // promotion dialog) receives a phantom click on whatever now sits under the
+    // finger, dismissing it instantly. Cancelling touchend suppresses the replay.
+    root.addEventListener('touchend', (ev) => ev.preventDefault(), { passive: false });
   }
 
   // Rotating the board 180 degrees leaves the light/dark pattern unchanged,
