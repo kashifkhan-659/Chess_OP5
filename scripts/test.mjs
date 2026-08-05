@@ -123,6 +123,27 @@ e.undo();
 check('undo restores the exact position', e.state().fen, startFen);
 check('undo clears the move history', e.state().history.length, 0);
 
+// --- saved games replay exactly (localStorage restore, and the online room) -
+const GAMES = {
+  'captures and castling': [['e2', 'e4'], ['d7', 'd5'], ['e4', 'd5'], ['g8', 'f6'],
+                            ['g1', 'f3'], ['f6', 'd5'], ['f1', 'b5'], ['c8', 'd7'],
+                            ['e1', 'g1'], ['e8', 'c8']],
+  'a promotion': [['e2', 'e4'], ['d7', 'd5'], ['e4', 'd5'], ['c7', 'c6'],
+                  ['d5', 'c6'], ['g8', 'f6'], ['c6', 'b7'], ['c8', 'd7'],
+                  ['b7', 'a8', 'r']], // under-promotes, so 'q' can't pass by default
+};
+for (const [name, line] of Object.entries(GAMES)) {
+  e.newGame();
+  for (const [f, t, p] of line) e.move(sq(f), sq(t), p);
+  const saved = e.state();
+  const moves = saved.history.map((h) => [h.from, h.to, h.promo]); // what gets stored
+  e.newGame();
+  check(`replays a saved game with ${name}`, moves.every(([f, t, p]) => e.move(f, t, p)), true);
+  check(`restores the same position after ${name}`, e.state().fen, saved.fen);
+  check(`keeps the notation across ${name}`, e.state().history.map((h) => h.san),
+        saved.history.map((h) => h.san));
+}
+
 // --- the AI actually plays chess -------------------------------------------
 e.setFen('6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1');
 {

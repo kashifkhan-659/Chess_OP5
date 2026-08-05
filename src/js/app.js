@@ -16,6 +16,7 @@ const LEVELS = [
 ];
 const PIECE_VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9 };
 const PREFS_KEY = 'gambit:prefs';
+const SAVE_KEY = 'gambit:game';
 
 const prefs = {
   theme: 'dark',
@@ -175,6 +176,46 @@ function sync({ hint = null, animate = true } = {}) {
   board.setCheck(state.checkSquare);
   board.setInteractive(canPlay());
   renderPanel();
+  saveGame();
+}
+
+/**
+ * A local game survives a refresh: the move list is the whole save, replaying it
+ * is the whole restore. Online rooms already do this through the database.
+ * Hanging off sync() covers every way the position changes — a move, the
+ * computer's reply, an undo — and a new game or a finished one clears it by
+ * having nothing worth storing.
+ */
+function saveGame() {
+  if (prefs.mode === 'online') return;
+  try {
+    if (!state.history.length || state.status !== 'playing') {
+      localStorage.removeItem(SAVE_KEY);
+    } else {
+      const moves = state.history.map((h) => [h.from, h.to, h.promo]);
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ mode: prefs.mode, moves }));
+    }
+  } catch {
+    /* private mode: the game just won't survive a refresh */
+  }
+}
+
+/** Replays the saved game into the engine, or leaves it at the start position. */
+function restoreGame() {
+  let save = null;
+  try {
+    save = JSON.parse(localStorage.getItem(SAVE_KEY));
+  } catch {
+    return;
+  }
+  if (save?.mode !== prefs.mode || !save.moves?.length) return;
+  for (const [from, to, promo] of save.moves) {
+    // A save the engine won't accept is a save from another build: start fresh.
+    if (!engine.move(from, to, promo)) {
+      engine.newGame();
+      return;
+    }
+  }
 }
 
 /** Plays the sound for the move that was just made and any game-ending one. */
@@ -837,6 +878,7 @@ applyAmbience();
 selectIn($('#side'), 'side', prefs.side);
 setOrientation(prefs.side === 'b' && prefs.mode === 'ai');
 $('#boot').remove();
+restoreGame(); // before the first sync, so the restored position is what paints
 sync({ animate: false });
 scheduleAi();
 

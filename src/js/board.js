@@ -34,12 +34,10 @@ export class Board {
     this.#buildCoords();
     root.addEventListener('pointerdown', (ev) => this.#pointerDown(ev));
     // Android's long-press callout arrives as contextmenu/selectstart. Suppress
-    // both unconditionally — an empty square, a locked board or a completed move
-    // all leave nothing selected, and a conditional guard misses every one.
-    root.addEventListener('contextmenu', (ev) => {
-      ev.preventDefault();
-      this.clearSelection();
-    });
+    // both unconditionally. Suppressing is all this may do: contextmenu fires
+    // ~500ms into a press, before pointerup, so dropping the selection here
+    // cancels the move the user is still in the middle of making.
+    root.addEventListener('contextmenu', (ev) => ev.preventDefault());
     root.addEventListener('selectstart', (ev) => ev.preventDefault());
   }
 

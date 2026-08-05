@@ -9,7 +9,7 @@
     "build": "node scripts/build.mjs",
     "dev": "node scripts/serve.mjs",
     "preview": "node scripts/build.mjs && node scripts/serve.mjs dist",
-    "test": "node scripts/test.mjs && node scripts/test-sound.mjs && node scripts/test-online.mjs"
+    "test": "node scripts/test.mjs && node scripts/test-board.mjs && node scripts/test-sound.mjs && node scripts/test-online.mjs"
   },
   "engines": {
     "node": ">=18"
