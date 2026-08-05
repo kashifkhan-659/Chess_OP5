@@ -225,12 +225,15 @@ button {
   stroke-linecap: round;
 }
 .icon-btn .ic-sound-off,
+.icon-btn .ic-amb-off,
 .icon-btn.off .ic-sound-on,
+.icon-btn.off .ic-amb-on,
 .ic-sun,
 :root[data-theme="light"] .ic-moon {
   display: none;
 }
 .icon-btn.off .ic-sound-off,
+.icon-btn.off .ic-amb-off,
 :root[data-theme="light"] .ic-sun {
   display: block;
 }

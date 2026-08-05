@@ -19,6 +19,7 @@ const PREFS_KEY = 'gambit:prefs';
 const prefs = {
   theme: 'dark',
   sound: true,
+  ambience: true,
   mode: 'ai',
   level: 2,
   side: 'w',
@@ -103,7 +104,9 @@ function pickup(sq) {
     if (m.from !== sq || byTarget.has(m.to)) continue;
     byTarget.set(m.to, { to: m.to, capture: m.capture });
   }
-  return [...byTarget.values()];
+  const targets = [...byTarget.values()];
+  if (targets.length) sound.pickup();
+  return targets;
 }
 
 async function attemptMove(from, to) {
@@ -144,18 +147,25 @@ function sync({ hint = null, animate = true } = {}) {
 function announce() {
   const last = state.history.at(-1);
   if (!last) return;
-  if (last.promo) sound.promote();
-  else if (last.castle) sound.castle();
-  else if (last.captured) sound.capture();
-  else sound.move();
+
+  // When a bigger sound is queued behind it, the strike is ducked and the two
+  // are spaced apart, so they read as one gesture instead of colliding.
+  const over = state.status !== 'playing';
+  const checking = !over && state.check;
+  const soft = over || checking;
+
+  if (last.promo) sound.promote({ soft });
+  else if (last.castle) sound.castle({ soft });
+  else if (last.captured) sound.capture({ soft });
+  else sound.move({ soft });
 
   if (state.status === 'checkmate') {
     const humanWon = prefs.mode === 'pvp' || state.winner === prefs.side;
-    setTimeout(() => (humanWon ? sound.win() : sound.lose()), 320);
-  } else if (state.status !== 'playing') {
-    setTimeout(() => sound.draw(), 320);
-  } else if (state.check) {
-    setTimeout(() => sound.check(), 90);
+    setTimeout(() => (humanWon ? sound.win() : sound.lose()), 300);
+  } else if (over) {
+    setTimeout(() => sound.draw(), 300);
+  } else if (checking) {
+    setTimeout(() => sound.check(), 130);
   }
 }
 
@@ -431,8 +441,37 @@ $('#btn-sound').addEventListener('click', () => {
   prefs.sound = !prefs.sound;
   savePrefs();
   applySound();
-  if (prefs.sound) sound.move();
+  if (prefs.sound) sound.ui(); // the click itself was swallowed while muted
 });
+
+function applyAmbience() {
+  sound.setAmbience(prefs.ambience);
+  const btn = $('#btn-amb');
+  btn.setAttribute('aria-pressed', String(prefs.ambience));
+  btn.classList.toggle('off', !prefs.ambience);
+}
+$('#btn-amb').addEventListener('click', () => {
+  prefs.ambience = !prefs.ambience;
+  savePrefs();
+  applyAmbience();
+});
+
+// Every control gets its click from here, so no button can be silently mute and
+// new ones are covered for free.
+document.addEventListener(
+  'pointerdown',
+  (ev) => {
+    const btn = ev.target.closest('.btn, .icon-btn, .segmented button, .promo-btn');
+    if (btn && !btn.disabled) sound.ui();
+  },
+  true
+);
+
+// Browsers block audio until the page has been interacted with, so the context
+// and the ambient bed both wait for the first gesture rather than page load.
+for (const type of ['pointerdown', 'keydown']) {
+  addEventListener(type, () => sound.unlock(), { once: true, capture: true });
+}
 
 document.addEventListener('keydown', (ev) => {
   if (ev.target.closest('input, textarea')) return;
@@ -451,6 +490,7 @@ buildLevels();
 applyMode();
 applyTheme();
 applySound();
+applyAmbience();
 selectIn($('#side'), 'side', prefs.side);
 setOrientation(prefs.side === 'b' && prefs.mode === 'ai');
 $('#boot').remove();
