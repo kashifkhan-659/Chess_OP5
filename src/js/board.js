@@ -28,6 +28,7 @@ export class Board {
     this.checkSq = -1;
     this.interactive = true;
     this.drag = null;
+    this.lastTouchAt = 0;
 
     this.#buildSquares();
     this.#buildCoords();
@@ -276,6 +277,15 @@ export class Board {
 
   #pointerDown(ev) {
     if (!this.interactive || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+    // Android Chrome replays a tap as a compatibility mouse event a moment after
+    // the touch, which re-enters this handler and toggles the selection straight
+    // back off. preventDefault() on a pointer event cannot suppress it, so the
+    // replay is ignored instead.
+    if (ev.pointerType === 'mouse') {
+      if (performance.now() - this.lastTouchAt < 700) return;
+    } else {
+      this.lastTouchAt = performance.now();
+    }
     const sq = this.squareFromEvent(ev);
     if (sq < 0) return;
 
@@ -335,6 +345,9 @@ export class Board {
   }
 
   #pointerUp(ev) {
+    // The replay follows the release, so a drag longer than the window above
+    // still needs the stamp refreshed here.
+    if (ev.pointerType !== 'mouse') this.lastTouchAt = performance.now();
     const d = this.drag;
     if (!d || ev.pointerId !== d.pointerId) return;
     this.drag = null;
