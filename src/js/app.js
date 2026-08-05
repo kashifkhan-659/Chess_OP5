@@ -53,6 +53,7 @@ let flipped = prefs.side === 'b';
 let thinking = false;
 let generation = 0; // bumped whenever the game changes under a pending search
 let promoResolve = null;
+let promoOpenedAt = 0;
 let online = null; // { code, color, ready, tc, clock, conn, over } while seated in a room
 let unwatch = null;
 let unpresence = null;
@@ -723,6 +724,7 @@ function askPromotion(color) {
     })
     .join('');
   dialog.hidden = false;
+  promoOpenedAt = performance.now();
   requestAnimationFrame(() => dialog.classList.add('show'));
   return new Promise((resolve) => {
     promoResolve = (value) => {
@@ -736,8 +738,16 @@ function askPromotion(color) {
 
 $('#promo').addEventListener('click', (ev) => {
   const btn = ev.target.closest('[data-promo]');
-  if (btn) promoResolve?.(btn.dataset.promo);
-  else if (ev.target === $('#promo')) promoResolve?.('');
+  if (btn) {
+    promoResolve?.(btn.dataset.promo);
+    return;
+  }
+  // The backdrop fills the whole board, so it sits exactly where the promoting
+  // drag just let go. Android replays that same touch as a compatibility click
+  // some tens of ms later; hit-tested at replay time, it lands on this backdrop
+  // and reads as an outside-tap cancel. A real "tap outside to cancel" can't
+  // land inside this window, so it's safe to ignore clicks that land this fast.
+  if (ev.target === $('#promo') && performance.now() - promoOpenedAt > 400) promoResolve?.('');
 });
 
 // ------------------------------------------------------------------ controls
