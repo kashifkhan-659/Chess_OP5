@@ -85,15 +85,36 @@ export class Board {
     return this.flipped ? row * 8 + (7 - col) : (7 - row) * 8 + col;
   }
 
-  #place(el, sq, animate = true) {
+  #place(el, sq, animate = true, settle = true) {
     const [row, col] = this.#cell(sq);
     if (!animate) {
       el.classList.add('no-anim');
       void el.offsetWidth; // flush the class before the transform changes
+    } else {
+      // Weight: a queen crossing the board takes longer than a pawn stepping
+      // one square, but the range stays tight enough to never feel sluggish.
+      const dist = Math.max(
+        Math.abs(row - (Number(el.style.getPropertyValue('--r')) || 0)),
+        Math.abs(col - (Number(el.style.getPropertyValue('--c')) || 0))
+      );
+      el.style.setProperty('--dur', `${180 + dist * 20}ms`);
+      if (dist && settle) this.#settle(el);
     }
     el.style.setProperty('--r', row);
     el.style.setProperty('--c', col);
     if (!animate) requestAnimationFrame(() => el.classList.remove('no-anim'));
+  }
+
+  /** Plays the landing squash once the slide finishes. */
+  #settle(el) {
+    el.addEventListener(
+      'transitionend',
+      () => {
+        el.classList.add('land');
+        setTimeout(() => el.classList.remove('land'), 130);
+      },
+      { once: true } // `transform` is the only transitioned property on .piece
+    );
   }
 
   #create(ch, sq) {
@@ -111,8 +132,9 @@ export class Board {
     if (this.flipped === flipped) return;
     this.flipped = flipped;
     this.#buildCoords();
-    // Re-placing every piece makes the flip a single smooth transition.
-    for (const [sq, rec] of this.piecesBySq) this.#place(rec.el, sq, true);
+    // Re-placing every piece makes the flip a single smooth transition — same
+    // easing as a move, but no landing squash: 32 of them at once is noise.
+    for (const [sq, rec] of this.piecesBySq) this.#place(rec.el, sq, true, false);
     this.#renderMarkers();
   }
 
@@ -198,16 +220,30 @@ export class Board {
   }
 
   select(sq, targets) {
+    this.#lift(false);
     this.selected = sq;
     this.targets = targets;
+    this.#lift(true);
     this.#renderMarkers();
   }
 
   clearSelection() {
     if (this.selected < 0 && this.targets.length === 0) return;
+    this.#lift(false);
     this.selected = -1;
     this.targets = [];
     this.#renderMarkers();
+  }
+
+  /** Visually raises the selected piece off the board. */
+  #lift(on) {
+    this.piecesBySq.get(this.selected)?.el.classList.toggle('lifted', on);
+  }
+
+  /** 'w' | 'b' | '' — the faction that owns the piece standing on `sq`. */
+  #sideAt(sq) {
+    const rec = this.piecesBySq.get(sq);
+    return rec ? colorOf(rec.piece) : '';
   }
 
   #marker(sq, className) {
@@ -222,13 +258,16 @@ export class Board {
   #renderMarkers() {
     const frag = document.createDocumentFragment();
     if (this.lastMove) {
-      frag.appendChild(this.#marker(this.lastMove.from, 'last'));
-      frag.appendChild(this.#marker(this.lastMove.to, 'last'));
+      // The mover is whoever now stands on the destination square.
+      const side = this.#sideAt(this.lastMove.to);
+      frag.appendChild(this.#marker(this.lastMove.from, `last ${side}`));
+      frag.appendChild(this.#marker(this.lastMove.to, `last ${side}`));
     }
     if (this.checkSq >= 0) frag.appendChild(this.#marker(this.checkSq, 'check'));
-    if (this.selected >= 0) frag.appendChild(this.#marker(this.selected, 'selected'));
+    const side = this.#sideAt(this.selected);
+    if (this.selected >= 0) frag.appendChild(this.#marker(this.selected, `selected ${side}`));
     for (const t of this.targets) {
-      frag.appendChild(this.#marker(t.to, t.capture ? 'target-capture' : 'target'));
+      frag.appendChild(this.#marker(t.to, `${t.capture ? 'target-capture' : 'target'} ${side}`));
     }
     this.markersEl.replaceChildren(frag);
   }

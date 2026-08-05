@@ -1,64 +1,75 @@
 /* ============================================================ tokens */
 :root {
-  --bg: #17130f;
-  --bg-2: #100d0a;
-  --panel: #211a15;
-  --panel-2: #2a211a;
-  --line: #3a2e24;
-  --text: #efe6d8;
-  --muted: #a08c76;
-  --accent: #c9a227;
-  --accent-soft: rgba(201, 162, 39, 0.16);
+  --bg: #0c0e13;
+  --bg-2: #05060a;
+  --panel: rgba(20, 24, 32, 0.66);
+  --panel-2: rgba(33, 39, 50, 0.58);
+  --line: rgba(186, 150, 78, 0.2);
+  --text: #e7e2d6;
+  --muted: #8e8879;
+  --accent: #b6933f;
+  --accent-soft: rgba(182, 147, 63, 0.14);
 
-  --sq-light-1: #edd8b0;
-  --sq-light-2: #dcc196;
-  --sq-dark-1: #a5714a;
-  --sq-dark-2: #8b5c3a;
+  --sq-light-1: #d9d1bf;
+  --sq-light-2: #c3b9a4;
+  --sq-dark-1: #2c3441;
+  --sq-dark-2: #1c222c;
 
-  --bezel-1: #533a26;
-  --bezel-2: #2b1e14;
+  --bezel-1: #322c22;
+  --bezel-2: #12151b;
 
-  --w-fill: #f7f0e2;
-  --w-line: #3b2c1d;
-  --w-eye: #3b2c1d;
-  --b-fill: #332d27;
-  --b-line: #0d0a08;
-  --b-eye: #b9ac99;
+  --w-fill: #f2ecdd;
+  --w-line: #2b3444;
+  --w-eye: #2b3444;
+  --b-fill: #242a34;
+  --b-line: #0a0c10;
+  --b-eye: #b0a894;
 
-  --hl-last: rgba(214, 168, 58, 0.32);
-  --hl-select: rgba(214, 168, 58, 0.42);
-  --hl-dot: rgba(30, 20, 12, 0.35);
-  --hl-dot-strong: rgba(30, 20, 12, 0.5);
-  --danger: #d8483c;
+  /* Two opposing factions: White reads cool, Black reads ember-red.
+     Kept as raw channels so rgb(var(--x) / a) can tint at any strength. */
+  --faction-w-rgb: 110 166 255;
+  --faction-b-rgb: 224 82 75;
+  --accent-rgb: 182 147 63;
 
-  --shadow-lg: 0 32px 64px -24px rgba(0, 0, 0, 0.8);
+  --shadow-lg: 0 32px 64px -24px rgba(0, 0, 0, 0.85);
   --radius: 14px;
+  /* Accelerate out of the origin, decelerate into the destination. */
+  --ease: cubic-bezier(0.36, 0.02, 0.18, 1);
   --font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
 }
 
 :root[data-theme="light"] {
-  --bg: #efe7db;
-  --bg-2: #e2d7c6;
-  --panel: #fffaf1;
-  --panel-2: #f6eee1;
-  --line: #ddd0bb;
-  --text: #2c2219;
-  --muted: #7d6a56;
-  --accent: #a8781a;
-  --accent-soft: rgba(168, 120, 26, 0.14);
+  --bg: #d8d5cd;
+  --bg-2: #b9b7b1;
+  --panel: rgba(255, 253, 248, 0.78);
+  --panel-2: rgba(240, 236, 227, 0.7);
+  --line: rgba(139, 108, 46, 0.26);
+  --text: #23282f;
+  --muted: #6d6759;
+  --accent: #8d6c1c;
+  --accent-soft: rgba(141, 108, 28, 0.13);
 
-  --sq-light-1: #f4e3c1;
-  --sq-light-2: #e9d2a8;
-  --sq-dark-1: #b9825a;
-  --sq-dark-2: #a06c46;
+  --sq-light-1: #f0ead9;
+  --sq-light-2: #ddd4c0;
+  --sq-dark-1: #58657a;
+  --sq-dark-2: #414c5e;
 
-  --bezel-1: #8a6743;
-  --bezel-2: #5d4029;
+  --bezel-1: #8b8375;
+  --bezel-2: #4b4f58;
 
-  --hl-last: rgba(190, 141, 32, 0.3);
-  --hl-select: rgba(190, 141, 32, 0.4);
-  --shadow-lg: 0 26px 50px -26px rgba(60, 40, 20, 0.55);
+  --faction-w-rgb: 47 111 208;
+  --faction-b-rgb: 185 58 51;
+  --accent-rgb: 141 108 28;
+
+  --w-fill: #fbf7ee;
+  --w-line: #39445a;
+  --w-eye: #39445a;
+  --b-fill: #2f3642;
+  --b-line: #12161c;
+  --b-eye: #c3bba7;
+
+  --shadow-lg: 0 26px 50px -26px rgba(30, 34, 42, 0.5);
 }
 
 /* ============================================================ base */
@@ -74,11 +85,38 @@ body {
   font-family: var(--font);
   color: var(--text);
   background:
-    radial-gradient(1100px 700px at 18% -10%, rgba(201, 162, 39, 0.09), transparent 60%),
-    radial-gradient(900px 600px at 110% 110%, rgba(201, 162, 39, 0.06), transparent 60%),
+    radial-gradient(1200px 780px at 50% 32%, rgba(150, 160, 185, 0.09), transparent 62%),
     linear-gradient(170deg, var(--bg), var(--bg-2));
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Vignette: the board sits in a lit pocket, the edges fall away to black. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(120% 95% at 50% 38%, transparent 35%, rgba(0, 0, 0, 0.62) 100%);
+}
+
+/* Two soft blobs drifting past each other read as fog without a texture file. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+  background:
+    radial-gradient(38% 30% at 28% 34%, rgba(126, 146, 190, 0.11), transparent 70%),
+    radial-gradient(34% 26% at 74% 66%, rgba(190, 150, 90, 0.075), transparent 70%);
+  animation: drift 48s ease-in-out infinite alternate;
+}
+@keyframes drift {
+  from { transform: translate3d(-2.5%, 1.5%, 0) scale(1); }
+  to { transform: translate3d(3%, -2%, 0) scale(1.09); }
 }
 
 button {
@@ -110,6 +148,8 @@ button {
 
 /* ============================================================ chrome */
 .app {
+  position: relative;
+  z-index: 1;
   max-width: 1240px;
   margin: 0 auto;
   padding: clamp(14px, 2.4vw, 28px);
@@ -320,16 +360,16 @@ button {
   position: relative;
   padding: clamp(15px, 2.6vw, 26px);
   border-radius: var(--radius);
-  background: linear-gradient(155deg, var(--bezel-1), var(--bezel-2) 62%, #1d140d);
-  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.09),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  background: linear-gradient(155deg, var(--bezel-1), var(--bezel-2) 62%, #0a0c10);
+  box-shadow: var(--shadow-lg), 0 0 90px -30px rgba(150, 170, 210, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 .board-frame::before {
   content: "";
   position: absolute;
   inset: clamp(9px, 1.7vw, 17px);
   border-radius: 8px;
-  border: 1px solid rgba(201, 162, 39, 0.28);
+  border: 1px solid rgba(186, 150, 78, 0.34);
   pointer-events: none;
 }
 
@@ -338,8 +378,8 @@ body.thinking .board-frame::before {
   animation: thinkGlow 1.7s ease-in-out infinite;
 }
 @keyframes thinkGlow {
-  0%, 100% { border-color: rgba(201, 162, 39, 0.28); }
-  50% { border-color: rgba(201, 162, 39, 0.72); }
+  0%, 100% { border-color: rgba(186, 150, 78, 0.34); }
+  50% { border-color: rgba(214, 178, 96, 0.8); }
 }
 
 .board {
@@ -364,20 +404,20 @@ body.thinking .board-frame::before {
   overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 3px 20px rgba(0, 0, 0, 0.3);
 }
-/* Layered gradients fake a wood grain without shipping a texture. */
+/* Layered gradients fake aged stone / obsidian without shipping a texture. */
 .sq {
   position: relative;
 }
 .sq.light {
   background:
-    repeating-linear-gradient(93deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 6px),
-    repeating-linear-gradient(87deg, rgba(90, 55, 25, 0.055) 0 1px, transparent 1px 9px),
+    repeating-linear-gradient(112deg, rgba(255, 255, 255, 0.045) 0 2px, transparent 2px 7px),
+    repeating-linear-gradient(24deg, rgba(60, 55, 45, 0.045) 0 1px, transparent 1px 11px),
     linear-gradient(158deg, var(--sq-light-1), var(--sq-light-2));
 }
 .sq.dark {
   background:
-    repeating-linear-gradient(93deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 7px),
-    repeating-linear-gradient(87deg, rgba(0, 0, 0, 0.07) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(112deg, rgba(255, 255, 255, 0.03) 0 2px, transparent 2px 8px),
+    repeating-linear-gradient(24deg, rgba(0, 0, 0, 0.09) 0 1px, transparent 1px 11px),
     linear-gradient(158deg, var(--sq-dark-1), var(--sq-dark-2));
 }
 
@@ -393,11 +433,12 @@ body.thinking .board-frame::before {
   position: absolute;
   font-size: clamp(0.55rem, 1.1vw, 0.68rem);
   font-weight: 600;
-  letter-spacing: 0.05em;
-  color: rgba(233, 213, 176, 0.62);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(196, 162, 92, 0.72);
 }
 :root[data-theme="light"] .coord {
-  color: rgba(255, 248, 235, 0.8);
+  color: rgba(255, 246, 226, 0.88);
 }
 .coord.file {
   left: calc(var(--c) * 12.5%);
@@ -423,47 +464,85 @@ body.thinking .board-frame::before {
   height: 12.5%;
   transform: translate(calc(var(--c) * 100%), calc(var(--r) * 100%));
 }
+/* Markers carry the colour of the piece they belong to, so both sides read
+   as opposing factions rather than "the highlight colour". */
+.marker {
+  --f: var(--accent-rgb);
+}
+.marker.w {
+  --f: var(--faction-w-rgb);
+}
+.marker.b {
+  --f: var(--faction-b-rgb);
+}
+
 .marker.last {
-  background: var(--hl-last);
+  background: linear-gradient(160deg, rgb(var(--f) / 0.26), rgb(var(--f) / 0.11));
+  box-shadow: inset 0 0 0 1px rgb(var(--f) / 0.34);
 }
 .marker.selected {
-  background: var(--hl-select);
-  box-shadow: inset 0 0 0 2px rgba(255, 236, 178, 0.55);
+  background: rgb(var(--f) / 0.2);
+  box-shadow: inset 0 0 0 2px rgb(var(--f) / 0.6), inset 0 0 18px rgb(var(--f) / 0.3);
 }
+
+/* Soft glowing ring instead of a flat dot, breathing gently. */
 .marker.target::after {
   content: "";
   position: absolute;
   inset: 0;
   margin: auto;
-  width: 27%;
-  height: 27%;
+  width: 34%;
+  height: 34%;
   border-radius: 50%;
-  background: var(--hl-dot);
-  animation: pop 0.16s ease-out;
+  background: radial-gradient(
+    circle,
+    rgb(var(--f) / 0.72) 0 38%,
+    rgb(var(--f) / 0.26) 62%,
+    transparent 76%
+  );
+  box-shadow: 0 0 14px rgb(var(--f) / 0.45);
+  animation: pop 0.18s ease-out, breathe 2.4s ease-in-out 0.18s infinite;
 }
+/* The capture ring is the marker itself, and `transform` already positions it,
+   so it breathes on opacity only. */
 .marker.target-capture {
   border-radius: 50%;
-  box-shadow: inset 0 0 0 max(3px, 0.85vmin) var(--hl-dot-strong);
-  animation: pop 0.16s ease-out;
+  box-shadow: inset 0 0 0 max(3px, 0.85vmin) rgb(var(--f) / 0.62),
+    inset 0 0 22px rgb(var(--f) / 0.34), 0 0 12px rgb(var(--f) / 0.28);
+  animation: fade 0.18s ease-out, breatheFade 2.4s ease-in-out 0.18s infinite;
 }
 @keyframes pop {
   from { transform: scale(0.4); opacity: 0; }
 }
+@keyframes fade {
+  from { opacity: 0; }
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.72; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+@keyframes breatheFade {
+  0%, 100% { opacity: 0.74; }
+  50% { opacity: 1; }
+}
+
+/* Urgent: warmer, brighter and roughly twice the tempo of a move ring. */
 .marker.check::after {
   content: "";
   position: absolute;
-  inset: 0;
+  inset: -6%;
   background: radial-gradient(
     circle,
-    rgba(216, 72, 60, 0.9) 8%,
-    rgba(216, 72, 60, 0.42) 46%,
-    transparent 72%
+    rgba(255, 138, 60, 0.92) 6%,
+    rgba(228, 74, 38, 0.55) 44%,
+    transparent 74%
   );
-  animation: checkPulse 1.25s ease-in-out infinite;
+  filter: blur(1px);
+  animation: checkPulse 0.85s ease-in-out infinite;
 }
 @keyframes checkPulse {
-  0%, 100% { opacity: 0.55; transform: scale(0.9); }
-  50% { opacity: 1; transform: scale(1.05); }
+  0%, 100% { opacity: 0.5; transform: scale(0.86); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
 
 /* ------------------------------------------------ pieces */
@@ -474,7 +553,8 @@ body.thinking .board-frame::before {
   width: 12.5%;
   height: 12.5%;
   transform: translate(calc(var(--c) * 100%), calc(var(--r) * 100%));
-  transition: transform 0.27s cubic-bezier(0.22, 0.86, 0.3, 1);
+  /* --dur is set per move in board.js: longer slides take (a little) longer. */
+  transition: transform var(--dur, 240ms) var(--ease);
   will-change: transform;
 }
 .piece.no-anim {
@@ -486,8 +566,8 @@ body.thinking .board-frame::before {
   display: block;
   padding: 5%;
   stroke-width: 1.15;
-  transition: transform 0.2s ease, opacity 0.2s ease;
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.38));
+  transition: transform 0.18s var(--ease), opacity 0.22s ease, filter 0.18s ease;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
 }
 .piece.w svg {
   fill: var(--w-fill);
@@ -510,6 +590,14 @@ body.thinking .board-frame::before {
   stroke: none;
 }
 
+/* Picked up (click or drag start): the piece lifts off the board. */
+.piece.lifted {
+  z-index: 10;
+}
+.piece.lifted svg {
+  transform: scale(1.07);
+  filter: drop-shadow(0 7px 9px rgba(0, 0, 0, 0.55));
+}
 .piece.dragging {
   transition: none;
   transform: translate(var(--dx), var(--dy));
@@ -517,18 +605,28 @@ body.thinking .board-frame::before {
 }
 .piece.dragging svg {
   transform: scale(1.14);
-  filter: drop-shadow(0 12px 12px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.5));
+}
+/* Landing squash-and-settle, so a move ends with weight instead of stopping. */
+.piece.land svg {
+  animation: settle 110ms ease-out;
+}
+@keyframes settle {
+  0% { transform: scale(1.05, 0.95); }
+  55% { transform: scale(0.96, 1.04); }
+  100% { transform: scale(1); }
 }
 .piece.appear svg {
   opacity: 0;
   transform: scale(0.55);
 }
+/* A captured piece keeps dissolving while the capturer is still sliding in. */
 .piece.gone {
   z-index: 0;
 }
 .piece.gone svg {
   opacity: 0;
-  transform: scale(0.5) rotate(-10deg);
+  transform: scale(0.55) rotate(-8deg);
 }
 
 /* ------------------------------------------------ overlays on the board */
@@ -539,8 +637,9 @@ body.thinking .board-frame::before {
   display: grid;
   place-items: center;
   border-radius: var(--radius);
-  background: rgba(12, 9, 6, 0.62);
-  backdrop-filter: blur(5px);
+  background: rgba(6, 8, 12, 0.68);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   opacity: 0;
   transition: opacity 0.25s ease;
   z-index: 30;
@@ -556,8 +655,10 @@ body.thinking .board-frame::before {
   padding: 26px 32px;
   border-radius: 16px;
   background: var(--panel);
+  backdrop-filter: blur(16px) saturate(1.1);
+  -webkit-backdrop-filter: blur(16px) saturate(1.1);
   border: 1px solid var(--line);
-  box-shadow: 0 24px 48px -18px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 24px 48px -18px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   transform: translateY(14px) scale(0.96);
   transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.25, 1.1);
 }
@@ -629,8 +730,10 @@ body.thinking .board-frame::before {
   padding: 18px;
   border-radius: var(--radius);
   background: var(--panel);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .status {
@@ -646,25 +749,30 @@ body.thinking .board-frame::before {
   transition: border-color 0.2s, color 0.2s;
 }
 .status.check {
-  border-color: rgba(216, 72, 60, 0.6);
-  color: #f0897e;
+  border-color: rgba(255, 122, 60, 0.55);
+  color: #ff9a63;
+  box-shadow: 0 0 22px -6px rgba(255, 122, 60, 0.5);
 }
 .status.over {
   border-color: var(--accent);
   color: var(--accent);
 }
+/* The turn indicator glows in the faction colour of the side to move. */
 .turn-dot {
   width: 13px;
   height: 13px;
   border-radius: 50%;
   flex: none;
-  border: 1px solid var(--line);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border: 1px solid rgb(var(--f) / 0.7);
+  box-shadow: 0 0 0 3px rgb(var(--f) / 0.16), 0 0 12px rgb(var(--f) / 0.5);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
 }
 .turn-dot[data-turn="w"] {
+  --f: var(--faction-w-rgb);
   background: var(--w-fill);
 }
 .turn-dot[data-turn="b"] {
+  --f: var(--faction-b-rgb);
   background: var(--b-fill);
 }
 
@@ -674,11 +782,24 @@ body.thinking .board-frame::before {
   gap: 7px;
 }
 .label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 0.68rem;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
   font-weight: 600;
+}
+/* A small glowing bronze tick anchors each section header. */
+.label::before {
+  content: "";
+  width: 3px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgb(var(--accent-rgb) / 0.8);
+  flex: none;
 }
 
 .segmented {
@@ -711,7 +832,7 @@ body.thinking .board-frame::before {
 .segmented button.on {
   background: var(--accent-soft);
   color: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.32);
+  box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 0.38), 0 0 14px -4px rgb(var(--accent-rgb) / 0.55);
 }
 
 .moves {
@@ -804,13 +925,14 @@ body.thinking .board-frame::before {
 }
 .btn.primary {
   grid-column: 1 / -1;
-  background: linear-gradient(180deg, var(--accent), #a5811a);
+  background: linear-gradient(180deg, #c8a251, #8f7028);
   border-color: transparent;
-  color: #1b1409;
+  color: #16110a;
+  box-shadow: 0 0 20px -6px rgb(var(--accent-rgb) / 0.7);
 }
 .btn.primary:hover:not(:disabled) {
-  filter: brightness(1.08);
-  background: linear-gradient(180deg, var(--accent), #a5811a);
+  filter: brightness(1.1);
+  background: linear-gradient(180deg, #c8a251, #8f7028);
 }
 .result-card .btn.primary {
   padding: 11px 26px;

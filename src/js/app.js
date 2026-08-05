@@ -413,7 +413,7 @@ function applyTheme() {
   document.documentElement.dataset.theme = prefs.theme;
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', prefs.theme === 'dark' ? '#17130f' : '#f2ece2');
+    ?.setAttribute('content', prefs.theme === 'dark' ? '#0c0e13' : '#d8d5cd');
 }
 $('#btn-theme').addEventListener('click', () => {
   prefs.theme = prefs.theme === 'dark' ? 'light' : 'dark';
