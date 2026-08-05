@@ -19,6 +19,10 @@ const PLAYER_KEY = 'gambit:player';
 
 export const onlineAvailable = Boolean(firebaseConfig);
 
+// Room codes are the one thing a player types by hand, so log what we actually
+// looked up when running off the dev server. Never in a build.
+const DEV = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+
 let fb = null;
 
 async function sdk() {
@@ -87,7 +91,10 @@ export async function createRoom() {
     const res = await runTransaction(ref(db, `rooms/${code}`), (room) =>
       room ? undefined : { createdAt: Date.now(), players: { w: id } }
     );
-    if (res.committed) return store(SESSION_KEY, { code, color: 'w' });
+    if (res.committed) {
+      if (DEV) console.log(`[online] created rooms/${code}`);
+      return store(SESSION_KEY, { code, color: 'w' });
+    }
   }
   throw new Error('Could not create a room — please try again.');
 }
@@ -115,18 +122,32 @@ export async function joinRoom(rawCode) {
   const code = normalizeCode(rawCode);
   if (code.length !== 6) throw new Error('Room codes are 6 letters or digits.');
 
-  const { db, ref, get, runTransaction } = await sdk();
+  const { db, ref, onValue, runTransaction } = await sdk();
   const id = playerId();
   const room = ref(db, `rooms/${code}`);
 
-  // Read first: a transaction on a path with nothing cached runs against null,
-  // which reads as "no room" and aborts before it ever reaches the server.
-  if (!(await get(room)).exists()) throw new Error(`No room called ${code}.`);
+  // runTransaction calls takeSeat once, synchronously, against whatever the
+  // local cache already holds, and a refusal (undefined) ends the transaction
+  // right there without ever asking the server. A browser that has never seen
+  // this room has an empty cache, so the first run saw null and refused itself.
+  // get() does not help: it caches the value only until its own promise
+  // settles. Only a listener held open across the transaction keeps the room in
+  // the cache long enough for takeSeat to see it.
+  let detach = () => {};
+  try {
+    const first = await new Promise((resolve, reject) => {
+      detach = onValue(room, resolve, reject);
+    });
+    if (DEV) console.log(`[online] join rooms/${code} →`, first.val());
+    if (!first.exists()) throw new Error(`No room called ${code}.`);
 
-  let seat = {};
-  const res = await runTransaction(room, (current) => (seat = takeSeat(current, id)).room);
-  if (!res.committed || !seat.color) throw new Error(seat.refusal || `Could not join ${code}.`);
-  return store(SESSION_KEY, { code, color: seat.color });
+    let seat = {};
+    const res = await runTransaction(room, (current) => (seat = takeSeat(current, id)).room);
+    if (!res.committed || !seat.color) throw new Error(seat.refusal || `Could not join ${code}.`);
+    return store(SESSION_KEY, { code, color: seat.color });
+  } finally {
+    detach();
+  }
 }
 
 /**
