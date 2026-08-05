@@ -1,0 +1,17 @@
+{
+  "name": "wasm-chess",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Chess engine in C++ compiled to WebAssembly, with an animated vanilla-JS board.",
+  "scripts": {
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/serve.mjs",
+    "preview": "node scripts/build.mjs && node scripts/serve.mjs dist",
+    "test": "node scripts/test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

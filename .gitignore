@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.vercel
+chess-game-claude-code-prompt.md
+# Emscripten scratch output — the shipped wasm build in public/wasm IS committed
+# on purpose so Vercel can deploy without an Emscripten toolchain.
+engine/*.o
+engine/build/
