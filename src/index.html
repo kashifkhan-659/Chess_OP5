@@ -96,7 +96,33 @@
         <div class="segmented" id="mode" role="group" aria-label="Game mode">
           <button type="button" data-mode="ai" class="on">Computer</button>
           <button type="button" data-mode="pvp">Two players</button>
+          <button type="button" data-mode="online">Online</button>
         </div>
+      </div>
+
+      <div class="field" id="field-online" hidden>
+        <span class="label">Online room</span>
+
+        <div class="online-lobby" id="online-lobby">
+          <button class="btn primary" id="btn-create" type="button">Create game</button>
+          <div class="join-row">
+            <input id="join-code" class="code-input" type="text" maxlength="6" placeholder="CODE"
+                   autocomplete="off" autocapitalize="characters" spellcheck="false"
+                   aria-label="Room code to join">
+            <button class="btn" id="btn-join" type="button">Join</button>
+          </div>
+        </div>
+
+        <div class="online-room" id="online-room" hidden>
+          <button class="room-code" id="room-code" type="button" title="Copy room code">
+            <span id="room-code-text"></span>
+            <span class="copy-hint" id="room-code-hint">copy</span>
+          </button>
+          <p class="online-you" id="online-you"></p>
+          <button class="btn" id="btn-leave" type="button">Leave room</button>
+        </div>
+
+        <p class="online-note" id="online-note" role="status" hidden></p>
       </div>
 
       <div class="field" id="field-level">

@@ -963,6 +963,97 @@ body.thinking .board-frame::before {
   padding: 11px 26px;
 }
 
+/* ============================================================ online */
+/* Three modes share the width two used to, so the labels tighten up. */
+#mode button {
+  font-size: 0.76rem;
+  padding: 8px 2px;
+}
+
+.online-lobby,
+.online-room {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.join-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+}
+.code-input {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+.code-input::placeholder {
+  color: var(--muted);
+  letter-spacing: 0.22em;
+}
+.code-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* The code is the one thing on screen a player has to read out loud. */
+.room-code {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 11px;
+  border: 1px dashed rgb(var(--accent-rgb) / 0.5);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 1.32rem;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-indent: 0.26em; /* letter-spacing pads the right edge; recentre it */
+  user-select: text;
+}
+.room-code:hover {
+  border-style: solid;
+}
+.copy-hint {
+  font-family: var(--font);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-indent: 0;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.online-you,
+.online-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+}
+.online-note.error {
+  color: #e0524b;
+}
+/* Waiting on the second player: the same pulse the thinking tag uses. */
+.online-room.waiting .online-you {
+  color: var(--accent);
+  animation: waiting 1.5s ease-in-out infinite;
+}
+@keyframes waiting {
+  50% { opacity: 0.42; }
+}
+
 /* ============================================================ boot */
 .boot {
   position: fixed;

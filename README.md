@@ -2,12 +2,12 @@
 
 A complete chess game that runs entirely in the browser. The rules and the AI
 are written in C++ and compiled to WebAssembly; the interface is plain HTML,
-CSS and ES modules. No backend, no database, no framework, no runtime
-dependencies.
+CSS and ES modules. No backend, no framework, no build-time dependencies.
 
 - **Full rules** — castling, en passant, promotion, check/checkmate/stalemate,
   the fifty-move rule, threefold repetition and insufficient material.
-- **Two modes** — local two-player, or four levels of computer opponent.
+- **Three modes** — local two-player, four levels of computer opponent, or
+  [online play against a friend](#online-play) over a 6-character room code.
 - **Move input** — drag a piece, or click it and click a destination.
 - **The search runs in a Web Worker**, so the board never freezes while the
   computer thinks.
@@ -37,7 +37,11 @@ public/     static assets, including the committed wasm build output
 src/        index.html, css/, js/ — the entire UI
 scripts/    build, dev server and tests (plain Node, no dependencies)
 dist/       build output (git-ignored)
+.env        Firebase values for online play (git-ignored, see .env.example)
 ```
+
+`src/js/firebase-config.js` is generated from `.env` by the build and is also
+git-ignored — don't edit it by hand.
 
 `npm run build` simply merges `src/` and `public/` into `dist/`. The browser
 loads the ES modules exactly as they are written.
@@ -75,18 +79,113 @@ toolchain, so the deploy build only copies files.
 npm test
 ```
 
+## Online play
+
+Two people on different devices, one shared room code. The site stays static —
+Firebase Realtime Database is the only server involved, and the browser talks
+to it directly.
+
+**How it works.** One player picks **Online → Create game** and gets a code
+like `K7QP2M`; the other picks **Online**, types the code and hits **Join**.
+The creator is White, the joiner is Black.
+
+A room stores nothing but the move list:
+
+```
+/rooms/K7QP2M
+  createdAt: 1754400000000
+  players:   { w: "<player id>", b: "<player id>" }
+  moves:     { 0: {f:12, t:28}, 1: {f:52, t:36}, 2: {f:5, t:26, p:"q"}, ... }
+```
+
+Whose turn it is, the position, check, checkmate and every draw condition are
+all recomputed by the same WASM engine on both devices, so none of it can drift
+between them. Each client keeps a live listener on the room; an opponent's move
+lands as a new entry and is replayed locally the moment it arrives. The board
+is locked whenever it isn't your turn, and until the second player has joined.
+
+The room code and your colour are kept in `localStorage`, so a refresh or a
+dropped connection rejoins the same room and replays the move list to catch up.
+Old rooms are simply left in the database — there is no cleanup job.
+
+### Setting it up
+
+**1.** Create a project at [console.firebase.google.com](https://console.firebase.google.com),
+then **Build → Realtime Database → Create Database**.
+
+**2.** Under **Rules**, allow reads and writes to rooms. Anyone with a code can
+play, which is the intent; the rules below at least stop the database being
+used as free general-purpose storage:
+
+```json
+{
+  "rules": {
+    "rooms": {
+      "$code": {
+        ".read": "$code.length === 6",
+        ".write": "$code.length === 6",
+        ".validate": "newData.hasChildren(['players'])",
+        "moves": {
+          "$ply": { ".validate": "newData.hasChildren(['f','t'])" }
+        }
+      }
+    }
+  }
+}
+```
+
+**3.** **Project settings → General → Your apps → Web app** gives you a config
+object. Copy `.env.example` to `.env` and paste the values in:
+
+```bash
+cp .env.example .env
+```
+
+`.env` is git-ignored. These values are not secrets — they ship to every
+browser either way — but keeping them out of the repo means the project isn't
+tied to one Firebase account.
+
+`npm run dev` and `npm run build` read `.env` (and the real environment, which
+wins) and generate `src/js/firebase-config.js`. Without those variables the
+config is `null` and the **Online** option simply doesn't appear; everything
+else works exactly as before.
+
+The Firebase SDK itself is loaded from Google's ESM CDN on first use, so there
+is still no bundler and nothing to install.
+
 ## Deploying to Vercel
 
 1. Push the repo to GitHub.
 2. On vercel.com: **Add New Project** → import the repo → **Deploy**.
 
 `vercel.json` already sets the build command and output directory, so nothing
-needs configuring in the dashboard. Every push to your default branch
-redeploys.
+else needs configuring. Every push to your default branch redeploys.
 
-The site is fully static — it can equally be dropped on GitHub Pages, Netlify,
-Cloudflare Pages, or any web server. The only requirement is that `.wasm` is
-served as `application/wasm`, which all of them do by default.
+**For online play, add the same variables** under **Settings → Environment
+Variables**, for Production, Preview and Development:
+
+| Name | Value |
+| --- | --- |
+| `FIREBASE_API_KEY` | `apiKey` from the Firebase config |
+| `FIREBASE_AUTH_DOMAIN` | `authDomain` |
+| `FIREBASE_DATABASE_URL` | `databaseURL` |
+| `FIREBASE_PROJECT_ID` | `projectId` |
+| `FIREBASE_STORAGE_BUCKET` | `storageBucket` |
+| `FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
+| `FIREBASE_APP_ID` | `appId` |
+
+They are read at build time, so **redeploy after adding them** — changing an
+environment variable does not update an existing deployment. The build log
+prints `online play enabled` or `online play will be hidden`, which is the
+quickest way to confirm they took.
+
+Also add your Vercel domain under **Firebase → Authentication → Settings →
+Authorised domains** if you later add sign-in; Realtime Database alone does not
+need it.
+
+The site is otherwise fully static — it can equally be dropped on GitHub Pages,
+Netlify, Cloudflare Pages, or any web server. The only requirement is that
+`.wasm` is served as `application/wasm`, which all of them do by default.
 
 ## The engine
 
@@ -129,6 +228,10 @@ disambiguation by file and by rank, and every draw condition.
 | `F` | Flip the board |
 | `U` | Undo (in computer games this steps back past its reply) |
 | `N` | New game |
+
+Undo is disabled in online games — taking a move back needs both players to
+agree, and nothing here asks them. **New game** in a room restarts it for both
+players.
 
 Sound is synthesised with the Web Audio API, so there are no audio files to
 load. Theme, sound, opponent and colour preferences persist in `localStorage`.

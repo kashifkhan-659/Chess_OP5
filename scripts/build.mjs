@@ -3,6 +3,7 @@
 import { cpSync, existsSync, rmSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeFirebaseConfig } from './firebase-config.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
@@ -12,6 +13,8 @@ if (!existsSync(wasm)) {
   console.error('Missing public/wasm/chess_engine.wasm — run `npm run build:wasm` first.');
   process.exit(1);
 }
+
+writeFirebaseConfig(); // into src/, so the copy below picks it up
 
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });

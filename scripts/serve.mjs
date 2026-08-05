@@ -4,9 +4,11 @@ import { createServer } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeFirebaseConfig } from './firebase-config.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = process.argv[2];
+if (!arg) writeFirebaseConfig(); // serving src/ directly: regenerate from .env
 const roots = (arg ? [arg] : ['src', 'public']).map((d) => path.resolve(root, d));
 const port = Number(process.env.PORT) || 5173;
 

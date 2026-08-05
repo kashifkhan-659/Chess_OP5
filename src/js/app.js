@@ -1,6 +1,7 @@
 import factory from '../wasm/chess_engine.js';
 import { Board } from './board.js';
 import { createEngine } from './engine.js';
+import * as net from './online.js';
 import { pieceSVG } from './pieces.js';
 import { createSound } from './sound.js';
 
@@ -50,6 +51,8 @@ let flipped = prefs.side === 'b';
 let thinking = false;
 let generation = 0; // bumped whenever the game changes under a pending search
 let promoResolve = null;
+let online = null; // { code, color, ready } while seated in an online room
+let unwatch = null;
 
 // ---------------------------------------------------------------- AI worker
 
@@ -86,7 +89,18 @@ function requestAi(fen, level) {
 const board = new Board($('#board'), { onMove: attemptMove, onPickup: pickup });
 
 function humanToMove() {
+  // Online: the board stays locked until both seats are filled, and then only
+  // unlocks on your own colour's turn. The engine still has the final say on
+  // legality — this only stops you touching pieces that aren't yours.
+  if (prefs.mode === 'online') return Boolean(online?.ready) && state.turn === online.color;
   return prefs.mode === 'pvp' || state.turn === prefs.side;
+}
+
+/** The colour the person at this device is playing, or null in local games. */
+function myColor() {
+  if (prefs.mode === 'online') return online?.color ?? null;
+  if (prefs.mode === 'ai') return prefs.side;
+  return null;
 }
 function canPlay() {
   return state?.status === 'playing' && !thinking && humanToMove();
@@ -121,6 +135,7 @@ async function attemptMove(from, to) {
       return;
     }
   }
+  const ply = state.history.length; // the slot this move will occupy in the room
   if (!engine.move(from, to, promo)) {
     sound.illegal();
     sync();
@@ -128,6 +143,11 @@ async function attemptMove(from, to) {
   }
   sync({ hint: { from, to, promo } });
   announce();
+  if (online) {
+    net
+      .pushMove(online.code, ply, { from, to, promo })
+      .catch(() => setNote('Could not send that move — check your connection.'));
+  }
   scheduleAi();
 }
 
@@ -160,7 +180,8 @@ function announce() {
   else sound.move({ soft });
 
   if (state.status === 'checkmate') {
-    const humanWon = prefs.mode === 'pvp' || state.winner === prefs.side;
+    const mine = myColor();
+    const humanWon = !mine || state.winner === mine; // local play: someone here won
     setTimeout(() => (humanWon ? sound.win() : sound.lose()), 300);
   } else if (over) {
     setTimeout(() => sound.draw(), 300);
@@ -197,6 +218,12 @@ async function runAi() {
 }
 
 function newGame() {
+  // In a room the reset has to happen for both players, so it goes through the
+  // database and comes back to each board as an empty move list.
+  if (online) {
+    net.resetGame(online.code).catch(() => setNote('Could not start a new game.'));
+    return;
+  }
   generation++;
   engine.newGame();
   setOrientation(prefs.side === 'b' && prefs.mode === 'ai');
@@ -206,6 +233,7 @@ function newGame() {
 }
 
 function undoMove() {
+  if (prefs.mode === 'online') return; // taking a move back needs both players to agree
   if (!state.history.length) return;
   generation++;
   thinking = false;
@@ -229,7 +257,7 @@ function renderPanel() {
   renderCaptures(state.history);
   renderEval();
 
-  $('#btn-undo').disabled = !state.history.length;
+  $('#btn-undo').disabled = !state.history.length || prefs.mode === 'online';
   showOverlayIfOver();
 }
 
@@ -338,6 +366,140 @@ function hideOverlay() {
   overlay.hidden = true;
 }
 
+// ---------------------------------------------------------- online rooms
+
+/**
+ * The room holds nothing but the move list, so catching up is simply replaying
+ * whatever this device hasn't seen yet. That covers a live opponent move, a
+ * rematch (the list is emptied), and a refresh mid-game (replay the lot).
+ */
+function applyRoom(room, error) {
+  if (!online) return;
+  if (!room) {
+    setNote(error ? 'Lost the connection to that room.' : 'That room is no longer available.');
+    leaveRoom();
+    return;
+  }
+  online.ready = Boolean(room.players.w && room.players.b);
+
+  let local = state.history.length;
+  if (room.moves.length < local) {
+    generation++;
+    engine.newGame();
+    hideOverlay();
+    local = 0;
+  }
+
+  let applied = 0;
+  for (let i = local; i < room.moves.length; i++) {
+    const m = room.moves[i];
+    // A rejected move means the two engines have diverged; stop rather than
+    // silently play on from a board the opponent isn't looking at.
+    if (!engine.move(m.f, m.t, m.p || '')) {
+      setNote('Lost sync with the other player — leave and rejoin the room.');
+      break;
+    }
+    applied++;
+  }
+
+  const last = room.moves.at(-1);
+  const single = applied === 1; // a catch-up replay shouldn't animate move by move
+  sync({ hint: single ? { from: last.f, to: last.t, promo: last.p } : null, animate: single });
+  if (single) announce();
+  renderOnline();
+}
+
+async function enterRoom({ code, color }) {
+  online = { code, color, ready: false };
+  generation++;
+  engine.newGame();
+  hideOverlay();
+  setOrientation(color === 'b');
+  sync({ animate: false });
+  renderOnline();
+  unwatch?.();
+  try {
+    unwatch = await net.watch(code, applyRoom); // fires straight away with the room as it stands
+  } catch (err) {
+    leaveRoom(); // a room with no listener would just look frozen
+    throw err;
+  }
+  setNote(''); // we're in — clear whatever got us here
+}
+
+function leaveRoom() {
+  unwatch?.();
+  unwatch = null;
+  online = null;
+  net.clearSession();
+  generation++;
+  engine.newGame();
+  hideOverlay();
+  setOrientation(false);
+  sync({ animate: false });
+  renderOnline();
+}
+
+function setNote(text, bad = true) {
+  const el = $('#online-note');
+  el.textContent = text;
+  el.hidden = !text;
+  el.classList.toggle('error', bad && Boolean(text));
+}
+
+function renderOnline() {
+  $('#online-lobby').hidden = Boolean(online);
+  $('#online-room').hidden = !online;
+  if (online) {
+    const colour = online.color === 'w' ? 'White' : 'Black';
+    $('#room-code-text').textContent = online.code;
+    $('#online-you').textContent = online.ready
+      ? `You are ${colour}`
+      : `You are ${colour} — waiting for an opponent…`;
+    $('#online-room').classList.toggle('waiting', !online.ready);
+  }
+  // The strips are fixed to a colour, so naming yourself on one is enough.
+  const mine = prefs.mode === 'online' ? online?.color : null;
+  $('#strip-bottom .pname').textContent = mine === 'w' ? 'White — you' : 'White';
+  $('#strip-top .pname').textContent = mine === 'b' ? 'Black — you' : 'Black';
+}
+
+/** Runs a room action with the button parked, surfacing any failure as a note. */
+async function roomAction(btn, fn) {
+  btn.disabled = true;
+  setNote('');
+  try {
+    await enterRoom(await fn());
+  } catch (err) {
+    setNote(err?.message || 'Something went wrong. Please try again.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$('#btn-create').addEventListener('click', (ev) => roomAction(ev.currentTarget, net.createRoom));
+$('#btn-join').addEventListener('click', (ev) =>
+  roomAction(ev.currentTarget, () => net.joinRoom($('#join-code').value))
+);
+$('#join-code').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') $('#btn-join').click();
+});
+$('#btn-leave').addEventListener('click', () => {
+  setNote('');
+  leaveRoom();
+});
+
+$('#room-code').addEventListener('click', async () => {
+  const hint = $('#room-code-hint');
+  try {
+    await navigator.clipboard.writeText(online.code);
+    hint.textContent = 'copied';
+  } catch {
+    hint.textContent = 'copy it manually';
+  }
+  setTimeout(() => (hint.textContent = 'copy'), 1600);
+});
+
 // -------------------------------------------------------- promotion dialog
 
 function askPromotion(color) {
@@ -385,12 +547,16 @@ function applyMode() {
   const ai = prefs.mode === 'ai';
   $('#field-level').hidden = !ai;
   $('#field-side').hidden = !ai;
+  $('#field-online').hidden = prefs.mode !== 'online';
   selectIn($('#mode'), 'mode', prefs.mode);
+  renderOnline();
 }
 
 $('#mode').addEventListener('click', (ev) => {
   const btn = ev.target.closest('[data-mode]');
   if (!btn || btn.dataset.mode === prefs.mode) return;
+  if (online) leaveRoom(); // switching away gives up the seat
+  setNote('');
   prefs.mode = btn.dataset.mode;
   savePrefs();
   applyMode();
@@ -486,6 +652,12 @@ document.addEventListener('keydown', (ev) => {
 
 // ----------------------------------------------------------------- start up
 
+// A deployment without Firebase env vars simply doesn't offer online play.
+if (!net.onlineAvailable) {
+  $('#mode [data-mode="online"]').hidden = true;
+  if (prefs.mode === 'online') prefs.mode = 'ai';
+}
+
 buildLevels();
 applyMode();
 applyTheme();
@@ -496,3 +668,14 @@ setOrientation(prefs.side === 'b' && prefs.mode === 'ai');
 $('#boot').remove();
 sync({ animate: false });
 scheduleAi();
+
+// A refresh reclaims the seat this browser already holds — joinRoom recognises
+// the stored player id and hands back the same colour rather than a new one.
+const seat = prefs.mode === 'online' && net.onlineAvailable ? net.loadSession() : null;
+if (seat?.code) {
+  setNote(`Reconnecting to room ${seat.code}…`, false);
+  net.joinRoom(seat.code).then(enterRoom).catch((err) => {
+    net.clearSession();
+    setNote(err?.message || 'Could not rejoin your last room.');
+  });
+}
