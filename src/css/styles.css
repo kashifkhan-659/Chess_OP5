@@ -89,6 +89,28 @@ body {
     linear-gradient(170deg, var(--bg), var(--bg-2));
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
+
+  /* Android Chrome fires its long-press text-selection gesture on the board,
+     painting a native blue highlight and a copy/share callout over the app's
+     own piece selection. Nothing here is copyable text, so kill selection,
+     the callout and image dragging for the whole UI. */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* user-drag doesn't inherit: the piece SVGs need it themselves, or a
+   long-press-drag becomes an image drag instead of a move. */
+svg {
+  -webkit-user-drag: none;
+}
+
+/* Buttons: no double-tap-zoom delay or gesture ambiguity. The board keeps
+   touch-action: none — it needs raw touchmove for drag-to-move. */
+button {
+  touch-action: manipulation;
 }
 
 /* Vignette: the board sits in a lit pocket, the edges fall away to black. */
@@ -390,8 +412,6 @@ body.thinking .board-frame::before {
   aspect-ratio: 1;
   width: 100%;
   touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
   cursor: pointer;
 }
 .board.locked {
